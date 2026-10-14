@@ -72,8 +72,40 @@ def norm_date(s):
     return str(s)[:10]
 
 
-def get_divid_events(code):
-    """从 xtdata 取除权事件 → [(日期, dr)] 日期统一格式 """
+DIVID_TABLE = "quantcordis_divid"
+
+
+def ensure_divid_table(cur):
+    """★ 复权因子【也要【落库】**✓（★ 2026-10-15 02:00 ✓）
+
+    ★ 为什么（★ 而【这【一条【与【"只存不复权价"【是【同一个【道理 ✓）:
+      · 【原来 `get_divid_events` 【每次【从 xtdata 【现取】**✗
+        ⇒ ★★★ 【三个【后果**:
+          ① 【离线【跑不了】（★ 每只【要 4.3 秒 · 【客户端【必须在 ✓）
+          ② ★★★ 【回测【依赖【行情客户端【在线】✗
+          ③ ★★★★ **【同一段历史【在【不同【时间【跑 ⇒ 【结果【可能【不同】**✗✗
+            （★ 上游【改了【因子 ⇒ 【后复权价【就变了 ✓）
+      · ★★ 【而【这【正是【项目【反对【的【东西】: 【README 写着
+        「前复权: 每次分红都重算历史 → 【回测不可复现】」✗
+        ⇒ ★★★ 【用【实时因子【算【后复权【是【同一个病】，【只是【换个口径 ✓✓
+      · ★★★ 【数据层【已经把【不复权价【落库【就是【为了【可复现】✓
+        ⇒ 【因子【是【同一类【事实】⇒ 【也该【落库 ✓（★ 与 bar_none 的 source/fetched_at 一致 ✓）
+
+    ★ 判据（★ 能失败 ✓）: 【落库【之后，【同一只票【的【因子【必须【与
+      【当场从【数据源【取的【完全一致】**⇒ 见 tools/divid_store_selftest.py ✓
+    """
+    cur.execute("""CREATE TABLE IF NOT EXISTS %s (
+        stock_code VARCHAR(20) NOT NULL,
+        ex_date    DATE        NOT NULL,
+        dr         DOUBLE      NOT NULL,
+        source     VARCHAR(32) NOT NULL DEFAULT 'xtdata',
+        fetched_at DATETIME    NOT NULL,
+        PRIMARY KEY (stock_code, ex_date)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""" % DIVID_TABLE)
+
+
+def _fetch_divid_events_from_source(code):
+    """★ 从【数据源【现取】✓（★ 只在【库里没有【或【显式【刷新【时【调用 ✓）"""
     from xtquant import xtdata
     dv = xtdata.get_divid_factors(code)
     if dv is None or len(dv) == 0:
@@ -84,6 +116,67 @@ def get_divid_events(code):
         d = _dt.datetime.fromtimestamp(int(r["time"]) / 1000, TZ).strftime("%Y-%m-%d")
         ev.append((norm_date(d), float(r["dr"])))
     ev.sort()
+    return ev
+
+
+def _store_divid(code, events, source="xtdata"):
+    """★ 把【因子【写进库】✓ · 重复【就【更新（★ 并【记【新的【抓取时间 ✓）"""
+    from db import get_connection
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        ensure_divid_table(cur)
+        now = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cur.executemany(
+            "INSERT INTO %s (stock_code, ex_date, dr, source, fetched_at) "
+            "VALUES (%%s,%%s,%%s,%%s,%%s) "
+            "ON DUPLICATE KEY UPDATE dr=VALUES(dr), source=VALUES(source), "
+            "fetched_at=VALUES(fetched_at)" % DIVID_TABLE,
+            [(code, d, float(f), source, now) for (d, f) in events])
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _read_divid(code):
+    """★ 从【库里【读】✓ —— 【这条路【不需要【行情客户端 ✓（★ 这就是【离线可回测 ✓）"""
+    from db import get_connection
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        ensure_divid_table(cur)
+        conn.commit()
+        cur.execute("SELECT ex_date, dr FROM %s WHERE stock_code=%%s "
+                    "ORDER BY ex_date" % DIVID_TABLE, (code,))
+        rows = cur.fetchall()
+    finally:
+        conn.close()
+    return [(norm_date(r[0]), float(r[1])) for r in rows]
+
+
+def get_divid_events(code, refresh=False):
+    """除权事件 → [(日期, dr)] 日期统一格式
+
+    ★ 顺序（2026-10-15 改）:
+      ① 先【读库】✓ —— 命中就【直接返回，【不碰行情客户端】
+      ② 库里【没有【或 `refresh=True` ⇒ 【从数据源【取一次【并【落库】✓
+      ③ 取不到【就【返回空】（★ 调用方【按【没有除权【处理 ✓）
+
+    ⇒ 好处: 【回测【可复现】（★ 因子【固定在库里 ✓）· 【可离线】· 【快】（★ 4.3 秒 → 毫秒级 ✓）
+    """
+    if not refresh:
+        try:
+            ev = _read_divid(code)
+            if ev:
+                return ev
+        except Exception:
+            pass                       # ★ 库不可用【就【退回【现取】（★ 不要【因为【库【而【跑不了 ✓）
+    ev = _fetch_divid_events_from_source(code)
+    if ev:
+        try:
+            _store_divid(code, ev)
+        except Exception:
+            pass                       # ★ 落库失败【不影响【本次【计算 ✓
     return ev
 
 
