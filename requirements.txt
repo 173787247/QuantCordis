@@ -1,0 +1,7 @@
+pymysql>=1.1.0
+pandas>=2.0.0
+
+# 行情数据源：xtquant 随 miniQMT / QMT 客户端提供，不通过 pip 安装。
+# 只跑回测与因子研究（读已有数据库）时不需要它；
+# 需要从行情源抓数（data/bar_none.py）时才要，见 docs/DATA-LAYER-DESIGN.md。
+# xtquant
