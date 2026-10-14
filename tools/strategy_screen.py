@@ -92,7 +92,15 @@ def main():
     from backtest.engine import run_backtest
 
     done = load_done(out)
-    jobs = [(c, s) for s in strategies for c in cs if (c, s) not in done]
+    # ★★★ 2026-10-15 01:30: 【票优先【而不是【策略优先】**✓✓
+    #   · ★ 引擎【有【进程内缓存】: 「同一只票多个策略只加载一次」（★ 原注释 ✓）
+    #   · ✗ 策略优先 ⇒ 【每一只【都是【新票 ⇒ 【缓存【全不命中】✗
+    #     ⇒ 【实测**: 每只【都【付【一次【冷加载（★ 10 秒级 ✓）
+    #   · ✓ 票优先 ⇒ 【同一只票的 6 个策略【共享【一次加载】✓
+    #     · ★★ 实测【同一只票**: 第 1 个策略 14.47 秒【而【第 2、3 个 **0.16 / 0.34 秒**✓✓
+    #   · ★★★ 而且【部分结果【更【有意义】: 【"前 N 只票 × 全部 6 个策略"】
+    #     ⇒ 【那【就是【一个【完整【的【小实验】，【统计量【直接【可算 ✓✓
+    jobs = [(c, s) for c in cs for s in strategies if (c, s) not in done]
     print("待跑 %d 个（已完成 %d）· 并发 %d" % (len(jobs), len(done), args.workers))
     print(flush=True)
 
