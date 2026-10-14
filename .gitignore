@@ -1,0 +1,29 @@
+# 绝对不能提交的（密钥与凭据）
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*credential*
+*secret*
+.credentials*
+
+# 本地配置
+config.local.*
+*.local.yaml
+
+# 数据与产物（体积大 · 可重建）
+*.csv
+*.parquet
+*.db
+*.sqlite3
+outputs/
+cache/
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
