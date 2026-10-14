@@ -64,6 +64,7 @@ Design
 Data
   PRICE-GAPS-FIXED.md     locating and fixing price breaks and magnitude jumps
   SCAN-NEW-DATA.md        new data sources and field availability
+  STRATEGY-SCREEN.md      strategy screen: six strategies on 1056 symbols
   SLIPPAGE-SENSITIVITY.md slippage sensitivity: the sign flips from 19 stocks to 25
 
 Research results

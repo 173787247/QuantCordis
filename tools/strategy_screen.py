@@ -71,6 +71,9 @@ def main():
     ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--limit", type=int, default=0, help="最多几只（0 = 全部）")
     ap.add_argument("--label", default="default")
+    ap.add_argument("--slip", type=float, default=0.0,
+                    help="单边比例滑点（如 0.001 = 0.1%%）。回测默认 0，"
+                         "而 0 会让「每只交易几十次」的策略看起来比实际好")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
@@ -85,6 +88,7 @@ def main():
     print("策略 %d 个: %s" % (len(strategies), ", ".join(strategies)))
     print("样本 %d 只（quantcordis_bar_none 全部）· %s → %s" % (len(cs), args.start, args.end))
     print("判据: 均值超额>0 且 中位超额>0 且 为正只数>50%")
+    print("滑点: 单边 %.3f%%" % (args.slip * 100))
     print("结果追加到 %s" % out)
     if args.dry_run:
         return 0
@@ -111,7 +115,7 @@ def main():
     def one(job):
         code, strat = job
         try:
-            r = run_backtest(code, strat, args.start, args.end)
+            r = run_backtest(code, strat, args.start, args.end, slippage=args.slip)
             return {"code": code, "strategy": strat,
                     "excess": r.get("excess"), "ret": r.get("total_return"),
                     "bh": r.get("buy_hold"), "trades": r.get("trades")}
