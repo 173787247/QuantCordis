@@ -40,6 +40,18 @@ ROOT = os.path.dirname(HERE)
 DATA = os.path.join(ROOT, "data")
 if DATA not in sys.path:
     sys.path.insert(0, DATA)
+# ★★★ 2026-10-15 02:05: 【自己的目录【也要加】—— 【否则【两种入口【行为【不同】**✓✓
+#   ✗ 原来【只加了 DATA【没加 HERE】**✗
+#     · ★ 【当脚本跑】（★ `python backtest/engine.py` ✓）⇒ 【Python 【自动【把【脚本目录
+#       放在 sys.path[0]】✓ ⇒ 【`import strategies` 【能成 ✓
+#     · ★★★ 【当库 import】（★ `from backtest.engine import run_backtest` ✓）⇒ 【没人加】✗
+#       ⇒ **`import strategies` 【失败【 ⇒ 【被 `except Exception: pass` 【吞掉**
+#         ⇒ ★★★★ 【本仓【自己【的【策略【全部【不可见】✗✗
+#           （★ 实测: `limit_up` 报"策略库里没有"而【它【就在【本仓 ✓）
+#           ⇒ 【能用的【全是【外部库【回退【来的 ✓
+#   ⇒ ★ 【补这一行 ⇒ 【本仓【策略【在【两种入口下【都可见 ✓✓
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
 
 from adjust import back_adjust, front_adjust, get_divid_events, norm_date # noqa: E402
 from db import execute_query # noqa: E402
@@ -164,11 +176,32 @@ def load_strategy(name):
     if callable(name):
         return name
     # ① 先找自己的
+    # ★★★ 2026-10-15 02:04: 【扫描 strategies/ 下所有模块，【不写死文件名】**✓✓
+    #   ✗ 原来【写死 `import strategies.limit_up`]**✗
+    #     ⇒ ★★ 【本仓【加一个策略【就得【回来改这一行】✗
+    #       ⇒ 【而【这个函数【第一句【就写「优先取 QuantCordis 自己的策略」✓
+    #         ⇒ ★★★ 【写死的 import 【让那句话【只对【一个文件【成立】**✗
+    #   ⇒ ★ 【改成【遍历包内模块】（★ 加策略 = 加文件 ⇒ 【零改引擎 ✓✓）
+    #     · 【约定【仍然是 `get(name)` ✓ · 返回 None 【就【继续找 ✓
+    #     · ★★ 【某个模块【报错【就【跳过它】，【不【影响【其他策略 ✓
     try:
-        import strategies.limit_up as _lu
-        f = _lu.get(name)
-        if f is not None:
-            return f
+        import importlib
+        import pkgutil
+        import strategies as _pkg
+        for _mi in pkgutil.iter_modules(_pkg.__path__):
+            try:
+                _mod = importlib.import_module("strategies." + _mi.name)
+            except Exception:
+                continue
+            _get = getattr(_mod, "get", None)
+            if not callable(_get):
+                continue
+            try:
+                _f = _get(name)
+            except Exception:
+                continue
+            if _f is not None:
+                return _f
     except Exception:
         pass
     # ② 回退到外部策略库
