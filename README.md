@@ -59,6 +59,7 @@ docs/        设计与研究文档
 数据
   PRICE-GAPS-FIXED.md     价格断裂与量级问题的定位与修法
   SCAN-NEW-DATA.md        新数据源与字段可用性
+  SLIPPAGE-SENSITIVITY.md 滑点敏感性: 样本从 19 只换到 25 只，符号翻转
 
 研究结论
   FACTOR-STUDY.md         因子研究方法与判据
