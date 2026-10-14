@@ -1,0 +1,30 @@
+name: 缺陷
+description: 行为与预期不符
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 实际行为。有输出就贴输出。
+    validations:
+      required: true
+  - type: textarea
+    id: expect
+    attributes:
+      label: 预期是什么
+      description: 判据写具体，能对照。例如「超额 = 策略收益 − 同期买入持有」。
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 怎么复现
+      description: 命令、参数、区间、标的。数据相关的请写清朝数与筛选条件。
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 证据
+      description: 日志、数字、文件路径。没有证据的结论先别写。

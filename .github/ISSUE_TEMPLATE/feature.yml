@@ -1,0 +1,23 @@
+name: 需求
+description: 想加或想改的东西
+labels: [enhancement]
+body:
+  - type: textarea
+    id: why
+    attributes:
+      label: 为什么需要
+      description: 它解决什么问题。与项目目标的关系。
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: 打算怎么做
+      description: 大致方案。涉及数据层或回测口径变更时写清影响面。
+  - type: textarea
+    id: check
+    attributes:
+      label: 判据
+      description: 怎么算做完了。判据要能失败 —— 说清什么情况下这条判据会红。
+    validations:
+      required: true
