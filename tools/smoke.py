@@ -79,7 +79,14 @@ def check_imports(files):
 def check_docs_index():
     """README 里点名的 docs/<name>.md 必须存在。"""
     readme = io.open(os.path.join(ROOT, "README.md"), encoding="utf-8").read()
-    named = set(re.findall(r"([A-Z][A-Z0-9-]+\.md)", readme))
+    # ★★★ 2026-10-15 01:04: 【边界【要写对】**✓✓
+    #   ✗ 原来【用 `([A-Z][A-Z0-9-]+\.md)`**✗
+    #     ⇒ ★★ 【它【会在 `README.zh-CN.md` 里【匹配到 `CN.md`】**✗
+    #       ⇒ 【然后【去 `docs/CN.md` 找 ⇒ 找不到 ⇒ **【报"缺 CN.md"】**✗✗（★ 假阳性 ✓）
+    #     · ★★★ 【而【假阳性【的【检查【和【恒过的【检查【一样【糟】——
+    #       【它会【教人【忽略【红】✓（★ 笔记 23 ✓）
+    #   ⇒ ★ 【加【左边界**: 【前面【不能【是【词字符/点/连字符】✓
+    named = set(re.findall(r"(?<![\w.-])([A-Z][A-Z0-9-]+\.md)", readme))
     missing = sorted(n for n in named
                      if not os.path.isfile(os.path.join(ROOT, "docs", n))
                      and n != "README.md")
