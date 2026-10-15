@@ -46,6 +46,8 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "data"))
 
 TOL = 1e-6
+# ★ A 股单日涨跌停上限 20%（创业板/科创板），留一点余量
+LIM = 0.21
 
 
 def codes(limit=0, one=""):
@@ -105,6 +107,8 @@ def main():
     #     ⇒ 【因为【实测【很多"缺口"【只【差 0.01 个点】（★ 像上游舍入 ✓）
     #       ⇒ 【不【分层【就【会【把【舍入【说成【漏事件 ✗
     ap.add_argument("--jsonl", default="", help="把每条缺口写成 JSONL")
+    ap.add_argument("--fix-class", default="A", choices=("A", "B", "ALL"),
+                    help="只对哪一类动手补因子（默认 A=漏事件；B 是价格异常，绝不补）")
     ap.add_argument("--min-diff", type=float, default=0.0,
                     help="只统计差额 >= 该值（百分点）的缺口")
     ap.add_argument("--fix", action="store_true",
@@ -136,7 +140,18 @@ def main():
                                         "r_adj": round(ra, 8), "r_none": round(rn, 8),
                                         "diff_pts": round(diff_pts, 6)},
                                        ensure_ascii=False) + "\n")
-            if diff_pts >= args.min_diff:
+            # ★★★ 2026-10-15 13:29: 【分三类】**✓✓（★ 两个【已知样本【双向【验过 ✓）
+            #   · LIM = 0.21 —— A 股【单日【涨跌停【上限【20%（创业板/科创板）⇒ 21% 留余量 ✓
+            #   · A 【漏除权事件】: 【数据源【自己【正常】（|r_none| ≤ 21%）【而【我们【离谱】
+            #     ⇒ ★ 只有【这类【才该【补因子 ✓（★ 已知样本 600519.SH 2006-05-25 ✓）
+            #   · B 【价格本身异常】: 【数据源【自己【也【离谱】（|r_none| > 21%）
+            #     ⇒ ★★ 【那【与因子表【无关】（★ 量级断裂/停牌复牌 ✓）⇒ **【绝【不能【补因子**】✗✗
+            #       （★ 已知样本 000620.SZ 2011-07-08 · r_none +363% ✓）
+            #   · C 【舍入】: 差额 < 0.01 个点 ✓
+            cls = "C" if diff_pts < 0.01 else ("B" if abs(rn) > LIM else "A")
+            if fout is not None and cls != "C":
+                pass          # ★ 上面【已经【写过 JSONL 了，这里【只是【分类 ✓
+            if diff_pts >= args.min_diff and (args.fix_class == "ALL" or cls == args.fix_class):
                 kept.append((d, dr, ra, rn))
         if kept:
             hit_stocks.append((c, len(kept), kept[0]))
