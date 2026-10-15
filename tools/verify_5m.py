@@ -80,6 +80,23 @@ def main():
         else:
             bad += 1
             fails.append((c, day, len(df), v5, vd, ratio))
+    # ★★★ 2026-10-15 16:12: 【判据【还【要【覆盖【价格列】**✓✓
+    #   ✗ 【原来的【判据【只【量【volume 求和】✗ —— 【而【今天【真正【坏【的【是【**价格列**】✗✗
+    #     （★ 全表 16.58% 的价格【是【空的、而 volume 【不是 ✓）
+    #     ⇒ ★★★ 【所以【它【正好【绕开【了【那个【真问题 ✓ —— 【这【正是【今天【的【教训**:
+    #       【**判据【要【覆盖【"【可能【坏【的东西"】、【而【不【是【"【我【方便【量【的东西"**】✓✓
+    #   · ★ 【加【一条**: 【抽到的票【里、【价格【四列【不能【有【空】（★ 且【把【根数【也【报出来 ✓）
+    _px_rows = db.execute_query(
+        "SELECT SUM(open_price IS NULL) AS o, SUM(high_price IS NULL) AS h, "
+        "SUM(low_price IS NULL) AS l, SUM(close_price IS NULL) AS c "
+        "FROM quantcordis_bar_5m")
+    _px = _px_rows[0] if _px_rows else {}
+    _nul = sum(int(_px.get(k) or 0) for k in ('o', 'h', 'l', 'c'))
+    print()
+    print("★ 价格列判据（★ 今天【的【教训【要求【它【必须在 ✓）:")
+    print("   全表【价格【四列【的【空值【合计 = **%d** ⇒ %s"
+          % (_nul, "✓ 通过 ✓" if _nul == 0 else "✗ 有空洞 ⇒ 去查采集"))
+    print()
     print("结果: 一致 %d · 不一致 %d · 跳过 %d（分母 %d）" % (ok, bad, skip, len(sample)))
     for c, day, n, v5, vd, ratio in fails[:10]:
         print("   %-12s %s · %d 根 · 5分=%.0f · 日K=%.0f · 比 %.4f" % (c, day, n, v5, vd, ratio))
