@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import argparse
+import io          # ★ 2026-10-15 13:22: 【补上 —— 我【写 JSONL 时【用了 io.open【却忘了 import】✗
 import os
 import sys
 import time
@@ -96,6 +97,16 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--code", default="", help="只查一只")
     ap.add_argument("--limit", type=int, default=0)
+    # ★★★ 2026-10-15 13:21: 【机器可读输出 + 差额过滤】**✓✓（★ 治本 ✓）
+    #   ✗ 【第一版【只【打印【中文行】✗ ⇒ 【而【PowerShell 的 *> 会【把中文【二次编码【坏】
+    #     ⇒ 【我【在【外面【用【正则【猜【中文【标签】✗ ⇒ 【抓不到【也【读不准 ✓
+    #   · ★ 【所以【改成**: 【每条缺口【写一行 JSONL】✓ ⇒ 【谁都【能【稳定【读 ✓
+    #   · ★★ 【外加 `--min-diff`**: 【只【统计【差额【超过【阈值的】✓
+    #     ⇒ 【因为【实测【很多"缺口"【只【差 0.01 个点】（★ 像上游舍入 ✓）
+    #       ⇒ 【不【分层【就【会【把【舍入【说成【漏事件 ✗
+    ap.add_argument("--jsonl", default="", help="把每条缺口写成 JSONL")
+    ap.add_argument("--min-diff", type=float, default=0.0,
+                    help="只统计差额 >= 该值（百分点）的缺口")
     ap.add_argument("--fix", action="store_true",
                     help="把反推出来的事件补进 quantcordis_divid（source=preClose_proxy）")
     args = ap.parse_args()
@@ -110,21 +121,41 @@ def main():
     n_gap = n_skip = n_days = 0
     hit_stocks = []
     fixes = []
+    fout = io.open(args.jsonl, "w", encoding="utf-8") if args.jsonl else None
+    import json as _json
     for c in cs:
         gaps, skipped, nd = audit_one(c, verbose=bool(args.code))
         n_gap += len(gaps)
         n_skip += skipped
         n_days += nd
-        if gaps:
-            hit_stocks.append((c, len(gaps), gaps[0]))
-            fixes += [(c, d, dr) for (d, dr, _a, _b) in gaps]
+        kept = []
+        for (d, dr, ra, rn) in gaps:
+            diff_pts = abs(ra - rn) * 100.0
+            if fout is not None:
+                fout.write(_json.dumps({"code": c, "date": d, "dr": round(dr, 6),
+                                        "r_adj": round(ra, 8), "r_none": round(rn, 8),
+                                        "diff_pts": round(diff_pts, 6)},
+                                       ensure_ascii=False) + "\n")
+            if diff_pts >= args.min_diff:
+                kept.append((d, dr, ra, rn))
+        if kept:
+            hit_stocks.append((c, len(kept), kept[0]))
+            fixes += [(c, d, dr) for (d, dr, _a, _b) in kept]
             if not args.code:
-                print("   %-12s 缺口 %2d 天 · 最早 %s（复权 %+.2f%% vs none %+.2f%%）"
-                      % (c, len(gaps), gaps[0][0], gaps[0][2] * 100, gaps[0][3] * 100))
+                print("   %-12s 缺口 %2d 天 · 最早 %s（复权 %+.2f%% vs none %+.2f%% · 差 %.4f 个点）"
+                      % (c, len(kept), kept[0][0], kept[0][2] * 100, kept[0][3] * 100,
+                         abs(kept[0][2] - kept[0][3]) * 100))
+    if fout is not None:
+        fout.close()
+        print("   ★ 明细已写: %s（每条缺口一行 JSONL）" % args.jsonl)
     print()
-    print("扫描完成: %d 只 · %d 个交易日 · 缺口 %d 天 · 跳过（昨收未调整）%d 天 · %.0f 秒"
-          % (len(cs), n_days, n_gap, n_skip, time.time() - t0))
-    print("有缺口的标的: %d 只" % len(hit_stocks))
+    print("SUMMARY\tstocks=%d\tdays=%d\tgap_days=%d\tskip_days=%d\tmin_diff=%g\t"
+          "hit_stocks=%d\tsecs=%.0f"
+          % (len(cs), n_days, n_gap, n_skip, args.min_diff, len(hit_stocks), time.time() - t0))
+    print("扫描完成: %d 只 · %d 个交易日 · 缺口（差额>=%g 个点）%d 天 · 全部缺口 %d 天 · "
+          "跳过（昨收未调整）%d 天 · %.0f 秒"
+          % (len(cs), n_days, args.min_diff, len(fixes), n_gap, n_skip, time.time() - t0))
+    print("有缺口的标的（按差额过滤后）: %d 只" % len(hit_stocks))
 
     if args.fix and fixes:
         import adjust as A
