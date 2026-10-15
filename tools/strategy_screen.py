@@ -153,7 +153,13 @@ def main():
             r = run_backtest(code, strat, args.start, args.end, slippage=args.slip)
             return {"code": code, "strategy": strat,
                     "excess": r.get("excess"), "ret": r.get("total_return"),
-                    "bh": r.get("buy_hold"), "trades": r.get("trades")}
+                    "bh": r.get("buy_hold"), "trades": r.get("trades"),
+                    # ★★★ 2026-10-15 14:33: 【暴露【也【记下来】**✓✓
+                    #   · 【为什么**: 【换【指数【基准【后【还【剩【一个【混淆】—— 【指数【满仓【而
+                    #     【策略【会【空仓 ⇒ 【实测 grid_classic 只【在【场 55.5%】· ma20_hold **45.5%**】
+                    #     ⇒ ★ 【不【记【暴露【就【没【法【把【指数【折算【成【同样【暴露【的一份 ✓
+                    "exposure": r.get("exposure"),
+                    "days_in_market": r.get("days_in_market")}
         except Exception as e:
             return {"code": code, "strategy": strat,
                     "error": "%s: %s" % (type(e).__name__, str(e)[:90])}
