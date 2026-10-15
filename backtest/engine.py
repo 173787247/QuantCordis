@@ -259,6 +259,13 @@ def run_backtest(code, strategy_name, start, end, adjust="back",
 
     cash = capital
     shares = 0.0 # 浮点份额 → 不受"100 股"约束
+    # ★★★ 2026-10-15 14:32: 【暴露 —— 每轮【都【该【报【的一个【数】**✓✓
+    #   · 【为什么**: 【用"【相对【买入持有"【比【超额【时、【会【把"【会【空仓"【的【策略【算【高】✗
+    #     （★ 因为【空仓【躲过【下跌【也【算【"【超额" ✓）⇒ 【实测 corr(超额, bh) = −0.87 ✓）
+    #   · ★ 【所以要【知道【每个策略【到底【在【场【多久】✓ ⇒ 【暴露 = 【持仓【天数 ÷ 总天数 ✓
+    #   · ★★ 【判据（★ 能失败 ✓）**: 【从不【交易 ⇒ **0**】· 【buy_and_hold ⇒ **1**】· 【其余【在 0~1 ✓
+    #   · ★★★ 【这个【计数器【只【在【算净值【那一行【旁边【加一、【不【碰【任何【交易【分支 ✓✓
+    days_in = 0
     sig_count = 0
     lot_warned = 0 # 因价格过高不足 1 手的次数 （不静默）
     navs, trades = [], []
@@ -297,6 +304,8 @@ def run_backtest(code, strategy_name, start, end, adjust="back",
                     dates[i], side, str(sig.get("reason", ""))[:52]))
             if (side == "buy" and shares <= 0) or (side == "sell" and shares > 0):
                 pending = side
+        if shares > 0:
+            days_in += 1
         navs.append(cash + shares * c[i])
     ret = (navs[-1] / capital - 1) * 100 if capital else 0
     peak = navs[0]; mdd = 0.0
@@ -313,6 +322,8 @@ def run_backtest(code, strategy_name, start, end, adjust="back",
         "start": dates[0], "end": dates[-1], "adjust": adjust,
         "total_return": ret, "max_drawdown": mdd * 100,
         "trades": len(trades), "signals": sig_count,
+        "exposure": (days_in / n) if n else 0.0,        # ★ 持仓天数 ÷ 总天数 ✓
+        "days_in_market": days_in,
         "lot_warned": lot_warned, "navs": navs, "trade_list": trades,
         "buy_hold": bh, "excess": ret - bh,
         "fees": {"commission": commission, "stamp_duty": stamp,
