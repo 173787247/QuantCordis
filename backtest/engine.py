@@ -132,6 +132,75 @@ def load_bars(code, start=None, end=None, adjust="back"):
     return out
 
 
+TABLE_5M = "quantcordis_bar_5m"
+_BARS5M_CACHE = {}
+
+
+def load_bars_5m(code, start=None, end=None, adjust="back"):
+    """ 从库里取 5 分钟线 → (bar_time, open, high, low, close, volume)
+
+    ★★★ 2026-10-15 15:17: 为什么 5 分钟也要复权
+      · 5 分钟只存了最近一年，看着像不会跨除权，而一年里必然有分红送转，
+        不复权的 5 分钟会在除权日跳一下，那一跳会被分钟级策略当成真信号。
+      · 所以用与日K 同一套因子（按日期部分查事件），口径统一。
+
+    与 load_bars 的区别：时间列是 bar_time（含时分），表是 quantcordis_bar_5m。
+    """
+    key = (code, start, end, adjust)
+    if key in _BARS5M_CACHE:
+        return _BARS5M_CACHE[key]
+    rows = execute_query(
+        "SELECT bar_time, open_price, high_price, low_price, close_price, volume "
+        "FROM %s WHERE stock_code=%%s ORDER BY bar_time" % TABLE_5M, (code,))
+    if not rows:
+        raise RuntimeError("库里没有 %s 的 5 分钟线（先跑 tools/fetch_5m.py）" % code)
+    # ★★★ 2026-10-15 15:18: 【跳过【价格【残缺【的【bar、【并且【报数】**✓✓
+    #   · ✗ 【实测（★ 分母 72,099,825 ✓）**: 【**16.58% 的【5 分钟 K 【价格【列【是【NULL**】✗✗
+    #     （★ 11,956,896 根 ✓）· 而【volume 【不是 NULL ⇒ 【不是【整行空、【是【光【价格【空 ✓
+    #   · ★★ 【而【我【的【抽查【判据【当时【没【抓到它】✗ —— 【因为【它【量【的【是【volume 求和】✓
+    #     ⇒ ★★★ 【教训**: 【**判据【要【覆盖【"【可能【坏【的【东西"】、
+    #       【而【不【是【"【我【方便【量【的东西"**】✓✓（★ 已【记进【进度 ✓）
+    #   · ★ 【做法**: 【丢掉【坏【bar、【并【把【丢【了【多少【打出来】（★ 不【静默 ✓）
+    _bad = 0
+    _keep = []
+    for _i, r in enumerate(rows):
+        if None in (r["open_price"], r["high_price"], r["low_price"], r["close_price"]):
+            _bad += 1
+            continue
+        _keep.append(r)
+    if _bad:
+        print("[load_bars_5m] %s: 丢掉 %d/%d 根价格残缺的 bar（%.2f%%）"
+              % (code, _bad, len(rows), 100.0 * _bad / max(1, len(rows))))
+    if not _keep:
+        raise RuntimeError("%s 的 5 分钟线全部价格残缺（%d 根）" % (code, len(rows)))
+    rows = _keep
+    ts = [str(r["bar_time"])[:19] for r in rows]
+    o = [float(r["open_price"]) for r in rows]
+    h = [float(r["high_price"]) for r in rows]
+    l = [float(r["low_price"]) for r in rows]
+    c = [float(r["close_price"]) for r in rows]
+    v = [int(r["volume"] or 0) for r in rows]
+    ev = get_divid_events(code)
+    if adjust in ("back", "front") and ev:
+        days = [t[:10] for t in ts]
+        f = back_adjust(days, c, ev) if adjust == "back" else front_adjust(days, c, ev)
+        ratio = [f[i] / c[i] if c[i] else 1.0 for i in range(len(c))]
+        o = [o[i] * ratio[i] for i in range(len(o))]
+        h = [h[i] * ratio[i] for i in range(len(h))]
+        l = [l[i] * ratio[i] for i in range(len(l))]
+        c = [c[i] * ratio[i] for i in range(len(c))]
+    if start:
+        s0 = str(start)[:10]
+        e0 = str(end)[:10] if end else "9999-99-99"
+        idx = [i for i, t in enumerate(ts) if s0 <= t[:10] <= e0]
+        out = ([ts[i] for i in idx], [o[i] for i in idx], [h[i] for i in idx],
+               [l[i] for i in idx], [c[i] for i in idx], [v[i] for i in idx])
+    else:
+        out = (ts, o, h, l, c, v)
+    _BARS5M_CACHE[key] = out
+    return out
+
+
 class MiniMarket:
     """ 只实现策略需要的那一个接口 → 自己写，不 import 外部回测器
 
@@ -249,7 +318,7 @@ def _load_external(name):
     return meta.evaluator
 
 
-def run_backtest(code, strategy_name, start, end, adjust="back",
+def run_backtest(code, strategy_name, start, end, adjust="back", period="1d",
                  capital=100000.0, commission=COMMISSION, stamp=STAMP_DUTY,
                  debug=False, slippage=0.0, slippage_ticks=0):
     """ 滑点
@@ -265,13 +334,20 @@ def run_backtest(code, strategy_name, start, end, adjust="back",
     if is_etf(code):
         stamp = ETF_STAMP
         commission = commission if commission != COMMISSION else ETF_COMMISSION
-    bars = load_bars(code, start, end, adjust=adjust)
+    # ★★★ 2026-10-15 15:17: 按 period 选加载器
+    #   "1d" 走原路径（一字不改）· "5m" 走新表 · 别的响亮报错，不静默退回日K
+    if period == "5m":
+        bars = load_bars_5m(code, start, end, adjust=adjust)
+    elif period == "1d":
+        bars = load_bars(code, start, end, adjust=adjust)
+    else:
+        raise ValueError("period 只支持 '1d' 与 '5m'，收到 %r" % (period,))
     dates, o, h, l, c, v = bars
     n = len(dates)
     if n < 30:
         raise RuntimeError("数据不足（%d 根）" % n)
     strat = load_strategy(strategy_name)
-    mkt = MiniMarket(code, bars)
+    mkt = MiniMarket(code, bars, period=period)
 
     cash = capital
     shares = 0.0 # 浮点份额 → 不受"100 股"约束
