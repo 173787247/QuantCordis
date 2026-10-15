@@ -98,13 +98,29 @@ def fetch_batch(xtdata, batch, start):
         df = (d or {}).get(c)
         if df is None or len(df) == 0:
             continue
+        # ★★★ 2026-10-15 15:54: 【价格【全空【的【行【不写库】**✓✓
+        #   · ✗ 【第一版【照收】**✗ ⇒ 【全量【落库 7209 万行、【其中 **1195 万行（16.58%）【价格【全空**】✗✗
+        #     （★ 集中在【数据源【最早【那几天：只有【极少数【票【有价、【其余【是【空壳行 ✓）
+        #   · ★★ 【后果**: 【它们【永远【被【加载器【丢掉】（★ 已【在【engine 里【挡 ✓）⇒ 【只【占空间、
+        #     【每次【加载【还要【过一遍】✗
+        #     ⇒ ★ 后来【我【把【那 1195 万行【删了】（★ 判据: 加载结果【一字不变 ✓）
+        #       ⇒ ★★★ 【而【不【堵【源头、【再跑【一次【采集【它们【就【回来】✗✓ ⇒ 【所以【在这里【拦 ✓
+        #   · ★ 【判据（★ 能失败 ✓）**: 【**修【之后【再【采集、【新增【的【价格空行【必须【是 0**】✓
         rows = []
+        _skip = 0
         for i in range(len(df)):
             r = df.iloc[i]
+            _o, _h, _l, _cl = (_f(r.get("open")), _f(r.get("high")),
+                               _f(r.get("low")), _f(r.get("close")))
+            if _o is None and _h is None and _l is None and _cl is None:
+                _skip += 1          # ★ 价格【全空 ⇒ 【不写 ✓（不静默、【最后报数 ✓）】
+                continue
             rows.append((c, _fmt(df.index[i]),
-                         _f(r.get("open")), _f(r.get("high")), _f(r.get("low")),
-                         _f(r.get("close")), _i(r.get("volume")), _f(r.get("amount")),
+                         _o, _h, _l, _cl, _i(r.get("volume")), _f(r.get("amount")),
                          _f(r.get("preClose")), _i(r.get("suspendFlag"))))
+        if _skip:
+            print("   %s: 跳过 %d 根价格全空的 bar（%.1f%%）"
+                  % (c, _skip, 100.0 * _skip / max(1, len(df))), flush=True)
         out[c] = rows
     return out
 
