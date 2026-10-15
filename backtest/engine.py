@@ -169,8 +169,15 @@ def load_bars_5m(code, start=None, end=None, adjust="back"):
             continue
         _keep.append(r)
     if _bad:
-        print("[load_bars_5m] %s: 丢掉 %d/%d 根价格残缺的 bar（%.2f%%）"
-              % (code, _bad, len(rows), 100.0 * _bad / max(1, len(rows))))
+        # ★★★ 2026-10-15 15:29: 【把【有效区间【也【报出来】**✓✓
+        #   · 【为什么**: 【只报"【丢了几十【根"【会【让【人【以为【只是【零星【缺失】✗
+        #     ⇒ 【而【实测【早期【那几天【价格【99% 空】✗ ⇒ **【丢【完【之后【起点【会【被【推后**】✓
+        #       （★ 实测【全表 16.58% 空、【而【集中【在【最早【几天、【最近 21 天【完全【干净 ✓）
+        #   · ★★ 【所以【要【让【调用方【一眼【看到【**实际【用的【是【哪【一段**】✓✓
+        print("[load_bars_5m] %s: 丢掉 %d/%d 根价格残缺的 bar（%.2f%%）· "
+              "有效区间 %s → %s"
+              % (code, _bad, len(rows), 100.0 * _bad / max(1, len(rows)),
+                 str(_keep[0]["bar_time"])[:16], str(_keep[-1]["bar_time"])[:16]))
     if not _keep:
         raise RuntimeError("%s 的 5 分钟线全部价格残缺（%d 根）" % (code, len(rows)))
     rows = _keep
