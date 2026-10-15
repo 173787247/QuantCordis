@@ -142,9 +142,16 @@ class MiniMarket:
       → 现在: 预建整张表一次 → 取数用 iloc 切片（视图，O(1)）
     """
 
-    def __init__(self, code, bars):
+    def __init__(self, code, bars, period="1d"):
         import pandas as pd
         self.code = code
+        # ★★★ 2026-10-15 15:14: 【记上【自己【加载的【是【哪个【周期】**✓✓
+        #   ✗ 【原来【没有【这个【属性】【✗ ⇒ 【而 `get_recent_kline` 【收 `period` 参数【却【不用它】✗✗
+        #     ⇒ ★★★ **【传 "5m" 【也【返回【日K】**✗ ⇒ 【5 分钟策略【会【在【日线上【跑【出
+        #       【一个【看着【合理【的【结果】✗✗ ⇒ **【静默【错、【比【报错【坏【得多 ✓✓**
+        #   · ★ 【引擎【现在【只【加载【日K】（★ `load_bars` 只读日线表 ✓）
+        #     ⇒ 【所以【默认 "1d"、【而【传【别的【周期【会【响亮【报错 ✓
+        self.period = period
         self._d, self._o, self._h, self._l, self._c, self._v = bars
         # 整张表只建一次
         self._df = pd.DataFrame({
@@ -158,6 +165,15 @@ class MiniMarket:
 
          切片是视图 → 不复制 → 快
         """
+        # ★★★ 2026-10-15 15:14: 【周期【不匹配【就【报错、【不【再【静默【返回【别的周期】**✓✓
+        #   ✗ 原来【这个【参数【收了【不用】**✗ ⇒ 【调用方【以为【拿到【5 分钟、【实际【拿到【日K ✓
+        #   · ★★ 【判据**: 【传【自己【的周期【能【取到】（★ "1d" ✓）· 【传【别的【必须【抛 ✓
+        if period != self.period:
+            raise ValueError(
+                "MiniMarket 加载的是 %r 周期，但策略请求 %r。"
+                "引擎目前只加载日K（load_bars 只读日线表），5 分钟尚未接线——"
+                "以前这里会静默返回日K，去查 backtest/engine.py 的 MiniMarket。"
+                % (self.period, period))
         end = self.cur_idx + 1
         start = max(0, end - count)
         return self._df.iloc[start:end]
