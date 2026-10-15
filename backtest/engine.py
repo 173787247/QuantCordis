@@ -182,9 +182,38 @@ def load_bars_5m(code, start=None, end=None, adjust="back"):
     v = [int(r["volume"] or 0) for r in rows]
     ev = get_divid_events(code)
     if adjust in ("back", "front") and ev:
-        days = [t[:10] for t in ts]
-        f = back_adjust(days, c, ev) if adjust == "back" else front_adjust(days, c, ev)
-        ratio = [f[i] / c[i] if c[i] else 1.0 for i in range(len(c))]
+        # ★★★ 2026-10-15 15:26: 【按【唯一日期【算【因子、【再【广播【到【当天【每根 bar】**✓✓
+        #   ✗ 【我【第一版【直接把 11,640 个【5 分钟点【喂给 `back_adjust`】**✗✗
+        #     · 【而【它【假设【输入【是【**日频序列**】✗ ⇒ 【而【我【的 days 里【每天【重复 48 次】
+        #       ⇒ ★★★ **【它【在【每天【内部【反复【应用【同【一个【因子 ⇒ 复利【爆炸**】✗✗
+        #     · ★★ 【实测【后果（★ 000001.SZ ✓）**: 【原始 close 10.01~12.07】⇒ 【而【复权后
+        #       【**11.61~436.64**】✗ · 【比例【从 1.02 【涨到 **36.82**】✗✗
+        #       ⇒ 【而【那【让【buy_hold【算【成 **+3492%**、超额 **−3273%**】✗（★ 全是【假的 ✓）
+        #   · ★★★ 【教训**: 【**日频工具【不【能【直接【套【到【分钟频**】——
+        #     【它的【输入【契约【是【"【一天【一个点"】✓ ⇒ 【要【先【降到【日频【再【升【回来 ✓
+        #   · ★ 【做法**: 【取出【唯一【日期（★ 按【顺序、【一天【一次 ✓）⇒ 用【每天【最后【一根【的
+        #     【close【当【那天的【代表】⇒ 算【出【每天【的【因子】⇒ 【再【映射【回【每根 bar ✓
+        days = []
+        day_close = []
+        day_last = []
+        for i, t in enumerate(ts):
+            dd = t[:10]
+            if days and days[-1] == dd:
+                day_close[-1] = c[i]
+                day_last[-1] = i
+            else:
+                days.append(dd)
+                day_close.append(c[i])
+                day_last.append(i)
+        fday = back_adjust(days, day_close, ev) if adjust == "back" else \
+            front_adjust(days, day_close, ev)
+        day_ratio = [fday[j] / day_close[j] if day_close[j] else 1.0
+                     for j in range(len(days))]
+        # ★ 广播: 每根 bar 用它【所属【那天的【比例】✓
+        day_of = {}
+        for j, dd in enumerate(days):
+            day_of[dd] = day_ratio[j]
+        ratio = [day_of.get(t[:10], 1.0) for t in ts]
         o = [o[i] * ratio[i] for i in range(len(o))]
         h = [h[i] * ratio[i] for i in range(len(h))]
         l = [l[i] * ratio[i] for i in range(len(l))]
