@@ -70,6 +70,21 @@ def main():
     ap.add_argument("--end", default="2026-06-30")
     ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--limit", type=int, default=0, help="最多几只（0 = 全部）")
+    # ★★★ 2026-10-15 13:55: 【抽样参数】**✓✓
+    #   · 【为什么要它**: 【上次筛选【用的是【干净池【每 5 取 1【的 1056 只 ✓
+    #     ⇒ ★ 【这次【要【用【一个【**不【与它【重叠**】的【样本【做【复现 ✓
+    #       （★ 若【同一策略【在两个【独立【样本上【都【成立 ⇒ 【证据【强【一档 ✓）
+    #   · ★ 【用法**: `--step 5 --offset 2` ⇒ 【从第 2 只【起【每 5 取 1 ✓
+    #     ⇒ 【与【上次【的 0,5,10… 【错开【成 2,7,12… ⇒ 【不重叠 ✓✓
+    ap.add_argument("--step", type=int, default=1, help="每 step 只取 1（默认 1 = 不抽）")
+    ap.add_argument("--offset", type=int, default=0, help="从第几只开始（默认 0）")
+    # ★★★ 2026-10-15 13:56: 【显式【排除【已筛过【的【代码】**✓✓
+    #   · 【为什么【不【靠 step/offset】✗: 【上次【的样本【取自【干净池【排序【后的【列表 ✓
+    #     【而【现在【列表【是【新表【的【超集、【排序【位置【会【移】✗
+    #       ⇒ ★ 【"offset 2"【不【保证【与【上次【不重叠 ✓
+    #   · ★★ 【所以【要【显式【排除】，【并【且【数【出【交集【来【验它【真的【不重叠 ✓
+    ap.add_argument("--exclude-from", default="",
+                    help="读一个 jsonl，把它里面出现过的 code 全部排除")
     ap.add_argument("--label", default="default")
     ap.add_argument("--slip", type=float, default=0.0,
                     help="单边比例滑点（如 0.001 = 0.1%%）。回测默认 0，"
@@ -79,6 +94,25 @@ def main():
 
     strategies = [s.strip() for s in args.strategies.split(",") if s.strip()]
     cs = codes()
+    if args.step and args.step > 1:
+        cs = cs[args.offset::args.step]      # ★ 抽样 ✓
+    elif args.offset:
+        cs = cs[args.offset:]
+    if args.exclude_from and os.path.isfile(args.exclude_from):
+        import json as _j
+        _ex = set()
+        for _l in io.open(args.exclude_from, encoding="utf-8", errors="replace"):
+            _l = _l.strip()
+            if not _l:
+                continue
+            try:
+                _ex.add(_j.loads(_l).get("code"))
+            except Exception:
+                pass
+        _before = len(cs)
+        cs = [c for c in cs if c not in _ex]
+        print("★ 已排除【上次筛过的 %d 只】⇒ 样本 %d ⇒ **%d**（★ 交集应为 0 ✓）"
+              % (len(_ex), _before, len(cs)))
     if args.limit:
         cs = cs[:args.limit]
     out_dir = os.path.join(ROOT, "outputs")
@@ -86,7 +120,8 @@ def main():
     out = os.path.join(out_dir, "screen_%s.jsonl" % args.label)
 
     print("策略 %d 个: %s" % (len(strategies), ", ".join(strategies)))
-    print("样本 %d 只（quantcordis_bar_none 全部）· %s → %s" % (len(cs), args.start, args.end))
+    print("样本 %d 只（quantcordis_bar_none · step=%d offset=%d）· %s → %s"
+          % (len(cs), args.step, args.offset, args.start, args.end))
     print("判据: 均值超额>0 且 中位超额>0 且 为正只数>50%")
     print("滑点: 单边 %.3f%%" % (args.slip * 100))
     print("结果追加到 %s" % out)
