@@ -38,6 +38,25 @@ echo "[pre-commit] ✓ smoke"
 
 # ★★★ 2026-10-16 10:17: 【隐私守卫（★ 公开仓【才【是【别人【会【克【隆【的【那【个 ✓）】
 #   · 【它【只【用 WSL python3、【秒级 ✓ ⇒ 【挂【在【每【次【提交【上【不【疼 ✓
+# ★★★ 2026-10-16 11:20: 【文档结构检查（★ 围栏【配对 + 表格【被【打断）**【✓✓
+#   · 【为什么【加它】: 【这个仓【有 24 个文档在 docs/ 下、【而【此【前【没【有【任【何【检查
+#     【看【它【们【的【结构】✗ ⇒ 【**两份【坏【掉【的【文档、【读【者【会【看【到【错【误【的【渲【染 ✓
+#   · ★ 【而【它【是【从【另【一【个仓【推【广【过【来【的】:
+#     【那边【把 `docs/` 加【进【扫【描【后【立【刻【报【出 5 处 ⇒ 【**"【一个仓【里【的【覆盖【漏【洞、
+#     【另【一【个仓【里【大【概【率【也【有"**】✓✓
+#   · ★★ 【而【它【见【过【红】✓（★ 三种【样本: 表格【打断 ⇒ 1 · 围栏【奇数 ⇒ 1 · 干净 ⇒ 0 ✓）
+#     ⇒ 【**所以【它【有【资【格【挂（★ 第 4.3 条 ✓）✓✓**
+if [ -f tools/md_structure_check.py ]; then
+  md_out=$(python3 tools/md_structure_check.py 2>&1); md_code=$?
+  if [ $md_code -ne 0 ]; then
+    echo "[pre-commit] ✗ md_structure_check exit=$md_code ⇒ 拒绝提交"
+    echo "$md_out" | tail -4 | sed 's/^/    /'
+    fail=1
+  else
+    echo "[pre-commit] ✓ md_structure_check"
+  fi
+fi
+
 if [ -f tools/privacy_check.py ]; then
   pout=$(python3 tools/privacy_check.py 2>&1); pcode=$?
   if [ $pcode -ne 0 ]; then
