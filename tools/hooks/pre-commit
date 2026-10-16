@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# ★★★ 2026-10-16 10:13: 【公开仓【的【守卫【也【要【拦住】**✓✓
+#
+# 为什么有它
+#   这个仓的守卫是 tools/smoke.py：它一整套自检（数据库能连、能读到 bar、策略能跑）。
+#   而我一直是手动跑它 —— 而今天已经证明「写在纸上/记在脑子里」不会自动生效。
+#
+# 范围
+#   只跑 smoke。它需要 Windows python（连库），所以这条比旧仓那条慢几秒到几十秒；
+#   但它拦的是「整个仓能不能启动」这种级别的问题，值这个时间。
+#
+# 绕过
+#   git commit --no-verify
+set -u
+cd "$(git rev-parse --show-toplevel)" || exit 0
+[ -f tools/smoke.py ] || exit 0
+py=""
+for c in python.exe python3.exe; do
+  command -v "$c" >/dev/null 2>&1 && { py="$c"; break; }
+done
+if [ -z "$py" ]; then
+  # ★ WSL 里没有 Windows python ⇒ 用 powershell 转一手 ✓
+  out=$(powershell.exe -NoProfile -Command \
+    "\$env:PYTHONIOENCODING='utf-8'; \$p=(Get-Command python -EA SilentlyContinue).Source; \
+     Set-Location '$(pwd -W 2>/dev/null || pwd)'; & \$p tools\smoke.py 2>&1 | Select-Object -Last 4; \
+     exit \$LASTEXITCODE" 2>&1)
+  code=$?
+else
+  out=$("$py" tools/smoke.py 2>&1); code=$?
+fi
+if [ $code -ne 0 ]; then
+  echo "[pre-commit] ✗ smoke exit=$code ⇒ 拒绝提交"
+  echo "$out" | tail -6 | sed 's/^/    /'
+  echo "[pre-commit] 确要绕过用 --no-verify。"
+  exit 1
+fi
+echo "[pre-commit] ✓ smoke"
+exit 0
