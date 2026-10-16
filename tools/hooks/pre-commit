@@ -35,4 +35,16 @@ if [ $code -ne 0 ]; then
   exit 1
 fi
 echo "[pre-commit] ✓ smoke"
+
+# ★★★ 2026-10-16 10:17: 【隐私守卫（★ 公开仓【才【是【别人【会【克【隆【的【那【个 ✓）】
+#   · 【它【只【用 WSL python3、【秒级 ✓ ⇒ 【挂【在【每【次【提交【上【不【疼 ✓
+if [ -f tools/privacy_check.py ]; then
+  pout=$(python3 tools/privacy_check.py 2>&1); pcode=$?
+  if [ $pcode -ne 0 ]; then
+    echo "[pre-commit] ✗ privacy_check exit=$pcode ⇒ 拒绝提交"
+    echo "$pout" | tail -6 | sed 's/^/    /'
+    exit 1
+  fi
+  echo "[pre-commit] ✓ privacy_check"
+fi
 exit 0
