@@ -76,8 +76,13 @@ def main():
     for rel in files:
         if any(rel.startswith(s) or ("/" + s + "/") in ("/" + rel) for s in SKIP_DIRS):
             continue
-        if os.path.basename(rel) == "privacy_check.py":
-            continue                      # ★ 它自己含通用模式字面量
+        # ★★★ 2026-10-16 10:18: 【不【能【整【个【文件【跳【过】**✗✗
+        #   · 【第一版【写【的【是「【跳过 privacy_check.py 自己」】✗
+        #     ⇒ ★★★ 【而【我【的【测试【样本【正好【插【在【它【身【上 ⇒ **【样本【被【吞【掉、
+        #       【判据①【假【通【过 ✓✓**
+        #   · ★ 【正确【做法】: 【只【跳过【**模式【表【那【几【行**】（★ 它们【含【通用【字面量 ✓）
+        #     【而【文件【的【其余【部分【照【常【扫 ✓
+        _in_pats = False
         fp = os.path.join(ROOT, rel)
         if not os.path.isfile(fp) or os.path.getsize(fp) > 4_000_000:
             continue
@@ -85,7 +90,17 @@ def main():
             txt = open(fp, encoding="utf-8", errors="replace").read()
         except Exception:
             continue
+        _lines = txt.split("\n")
+        _body = []
+        for _i, _l in enumerate(_lines):
+            if _l.startswith("PATS = ["):
+                _in_pats = True
+            if _in_pats and (not _l.strip() or _l.strip().startswith("]") and "PATS" not in _l):
+                _in_pats = False
+            if not _in_pats:
+                _body.append(_l)
         scanned += 1
+        txt = "\n".join(_body)
         for pat, name in PATS:
             for m in re.finditer(pat, txt):
                 hits.append((rel, name, m.group(0)[:48]))
